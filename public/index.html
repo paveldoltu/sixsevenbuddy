@@ -10,6 +10,7 @@
   body { margin: 0; min-height: 100vh; font: 16px/1.45 system-ui, sans-serif; color: #2b2d42; background: linear-gradient(160deg, #fff4e6, #e3f6ff); }
   button, input { font: inherit; border: 0; cursor: pointer; }
   .app { display: grid; grid-template-columns: 260px 1fr 320px; grid-template-areas: "lang lang lang" "topics stage side"; gap: 16px; padding: 16px 20px 20px; }
+  .wallet { grid-area: lang; justify-self: end; display: flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 999px; background: #ffd166; font-size: 20px; box-shadow: 0 4px 12px rgba(43, 45, 66, .15); }
   .languages { grid-area: lang; justify-self: center; display: flex; gap: 14px; }
   .language { width: 40px; height: 40px; border-radius: 50%; background: #ff7a59; color: #fff; font-weight: 700; }
   .language[aria-pressed=true] { outline: 3px solid #2b2d42; outline-offset: 2px; }
@@ -52,13 +53,17 @@
   button:disabled { opacity: .5; cursor: default; }
   .deck-area { display: flex; flex-direction: column; align-items: center; gap: 12px; }
   .deck { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; }
-  .card { width: 120px; height: 160px; padding: 0; background: none; perspective: 900px; }
+  .card { position: relative; width: 120px; height: 160px; padding: 0; background: none; perspective: 900px; }
   .flip { position: relative; display: block; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform .6s; }
   .card:hover .flip { transform: translateY(-6px); }
   .card.picked .flip { transform: rotateY(180deg); }
   .face { position: absolute; inset: 0; display: grid; place-items: center; padding: 14px; border-radius: 18px; backface-visibility: hidden; box-shadow: 0 8px 20px rgba(43, 45, 66, .18); overflow-wrap: anywhere; }
   .cover { background: #ff7a59; color: #fff; font-size: 44px; }
   .front { background: #fff; color: #2b2d42; font-size: 14px; transform: rotateY(180deg); }
+  .check { position: absolute; top: -8px; right: -8px; z-index: 2; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: #2bb673; color: #fff; font-weight: 700; box-shadow: 0 3px 8px rgba(43, 45, 66, .3); }
+  .coin, .reward { position: fixed; z-index: 20; pointer-events: none; }
+  .coin { font-size: 28px; }
+  .reward { font-size: 34px; font-weight: 800; color: #e0a416; text-shadow: 0 2px 0 #fff, 0 -2px 0 #fff, 2px 0 0 #fff, -2px 0 0 #fff; }
   .studio { width: min(560px, 94vw); max-height: 94vh; padding: 20px; border: 0; border-radius: 22px; color: #2b2d42; box-shadow: 0 20px 60px rgba(43, 45, 66, .3); }
   .studio[open] { display: flex; flex-direction: column; gap: 12px; }
   .studio::backdrop { background: rgba(43, 45, 66, .45); }
@@ -79,6 +84,7 @@
   @media (max-width: 900px) {
     .app { grid-template-columns: 1fr; grid-template-areas: "lang" "stage" "topics" "side"; padding-bottom: 130px; }
     .topic-list, .history { height: 200px; }
+    .languages { justify-self: start; }
   }
 </style>
 </head>
@@ -86,6 +92,7 @@
 <button id="mic" data-i18n-label="micLabel">🎤</button>
 <main class="app">
   <nav class="languages" id="languages" data-i18n-label="language"></nav>
+  <div class="wallet" id="wallet" role="status" data-i18n-label="wallet"><span aria-hidden="true">👛</span><strong id="coins">0</strong><span aria-hidden="true">🪙</span></div>
 
   <aside class="topics">
     <header><strong data-i18n="topics"></strong><button id="newTopic" data-i18n="newTopic"></button></header>

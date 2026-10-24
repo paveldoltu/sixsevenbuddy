@@ -7,6 +7,8 @@ const ELEVEN_URL = 'https://api.elevenlabs.io/v1';
 const GEMMA_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemma-4-26b-a4b-it:generateContent';
 const MAX_BODY_BYTES = 25 * 1024 * 1024;
 const GEMMA_TIMEOUT_MS = 60000;
+const GEMMA_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 1000;
 const EXTRACT_PROMPT =
   'Transcribe all the text in these photos of school material (a syllabus or homework), in reading order and in its original language. Keep exercise numbering and formulas. Output only the transcribed text.';
 const FLASHCARD_COUNT = 4;
@@ -58,6 +60,8 @@ const PROMPT = [
   'Flashcard for this session: {{flashcard}}',
   "If it says that no flashcard is selected, help with whatever the child asks. Otherwise build the whole session around that flashcard: ask its question, guide with hints and small steps, never reveal the answer before the child has tried, check the child's reply against the flashcard answer, and celebrate when they get it. Always use {{language}} and translate the flashcard on the fly if needed.",
 
+  'When the child gives a correct answer to the selected flashcard, call the flashcard_correct tool exactly once and then celebrate warmly. Never call it before the child has answered correctly, never call it twice for the same flashcard, and never call it when no flashcard is selected.',
+
   "Never assume the child's age, grade, curriculum or assignment; ask one short question if you need to know.",
   'Steer unrelated topics back to learning. Keep everything safe and appropriate for children.',
 ].join(' ');
@@ -68,6 +72,14 @@ const AGENT_CONFIG = {
     first_message: '{{opening}}',
     prompt: {
       prompt: PROMPT,
+      tools: [
+        {
+          type: 'client',
+          name: 'flashcard_correct',
+          description: 'Call this once when the child has correctly answered the selected study flashcard, so the app can reward them with a check and coins.',
+          expects_response: false,
+        },
+      ],
       built_in_tools: {
         language_detection: {
           type: 'system',
@@ -124,7 +136,10 @@ const gemma = async (parts, generationConfig) => {
     body: JSON.stringify({ contents: [{ parts }], generationConfig: { thinkingConfig: { thinkingLevel: 'MINIMAL' }, ...generationConfig } }),
     signal: AbortSignal.timeout(GEMMA_TIMEOUT_MS),
   });
-  if (!response.ok) throw new Error(`Gemma ${response.status} ${await response.text()}`);
+  if (!response.ok) {
+    const permanent = response.status < 500 && response.status !== 429;
+    throw Object.assign(new Error(`Gemma ${response.status} ${await response.text()}`), { permanent });
+  }
   const { candidates } = await response.json();
   return candidates[0].content.parts
     .filter((part) => !part.thought)
@@ -132,19 +147,50 @@ const gemma = async (parts, generationConfig) => {
     .text.trim();
 };
 
-const extractText = (images) =>
-  gemma([{ text: EXTRACT_PROMPT }, ...images.map((data) => ({ inline_data: { mime_type: 'image/jpeg', data } }))]);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const createFlashcards = async (material, language) => {
-  const { topic, cards } = JSON.parse(
-    await gemma([{ text: flashcardsPrompt(LANGUAGES[language].name, material) }], {
+const withRetries = async (task) => {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await task();
+    } catch (error) {
+      if (error.permanent || error.name === 'TimeoutError' || attempt === GEMMA_ATTEMPTS) throw error;
+      await sleep(RETRY_DELAY_MS * attempt);
+    }
+  }
+};
+
+const firstJsonObject = (text) => {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  const start = text.indexOf('{');
+  for (let index = start; start >= 0 && index < text.length; index++) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') inString = false;
+    } else if (char === '"') inString = true;
+    else if (char === '{') depth += 1;
+    else if (char === '}' && --depth === 0) return text.slice(start, index + 1);
+  }
+  throw new Error('Gemma did not return a JSON object');
+};
+
+const extractText = (images) =>
+  withRetries(() => gemma([{ text: EXTRACT_PROMPT }, ...images.map((data) => ({ inline_data: { mime_type: 'image/jpeg', data } }))]));
+
+const createFlashcards = (material, language) =>
+  withRetries(async () => {
+    const reply = await gemma([{ text: flashcardsPrompt(LANGUAGES[language].name, material) }], {
       responseMimeType: 'application/json',
       responseSchema: FLASHCARDS_SCHEMA,
-    }),
-  );
-  if (cards.length !== FLASHCARD_COUNT) throw new Error(`Expected ${FLASHCARD_COUNT} flashcards, got ${cards.length}`);
-  return { topic, cards };
-};
+    });
+    const { topic, cards } = JSON.parse(firstJsonObject(reply));
+    if (cards.length !== FLASHCARD_COUNT) throw new Error(`Expected ${FLASHCARD_COUNT} flashcards, got ${cards.length}`);
+    return { topic, cards };
+  });
 
 const readJson = async (req) => {
   const chunks = [];

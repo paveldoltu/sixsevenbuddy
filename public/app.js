@@ -1,11 +1,13 @@
 import { Conversation } from 'https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.30.0/+esm';
-import { loadTopics, saveTopics } from './study.js';
+import { loadCoins, loadTopics, saveCoins, saveTopics } from './study.js';
 import { LANGUAGES, applyLanguage, getLanguage, setLanguage, t } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 const NO_CARD = 'No flashcard is selected.';
 const MAX_SIDE = 1600;
 const REQUEST_TIMEOUT_MS = 90000;
+const COIN_REWARD = 67;
+const COIN_BURST = 12;
 const turns = [];
 const shots = [];
 let topics = loadTopics();
@@ -13,6 +15,8 @@ let topicId;
 let conversation;
 let stream;
 let card;
+let rewarded = false;
+let coins = loadCoins();
 let starting = false;
 let sessionId = 0;
 
@@ -37,6 +41,13 @@ function markSelection() {
   $('freeChat').classList.toggle('active', !card);
 }
 
+function setCard(item) {
+  card = item;
+  rewarded = false;
+}
+
+const checkMark = () => Object.assign(document.createElement('span'), { className: 'check', textContent: '✓', title: t().done });
+
 const face = (className, text) => Object.assign(document.createElement('span'), { className: `face ${className}`, textContent: text });
 
 function cardButton(item) {
@@ -44,6 +55,7 @@ function cardButton(item) {
   flip.append(face('cover', '?'), face('front', item.question));
   const element = Object.assign(document.createElement('button'), { className: 'card', onclick: () => selectCard(item) });
   element.append(flip);
+  if (item.done) element.append(checkMark());
   return element;
 }
 
@@ -78,7 +90,7 @@ async function restartConversation() {
 
 function showTopic(id) {
   topicId = id;
-  card = undefined;
+  setCard(undefined);
   renderStudy();
   restartConversation();
 }
@@ -88,13 +100,13 @@ function selectTopic(id) {
 }
 
 function selectCard(item) {
-  card = item;
+  setCard(item);
   markSelection();
   restartConversation();
 }
 
 function freeChat() {
-  card = undefined;
+  setCard(undefined);
   markSelection();
   restartConversation();
 }
@@ -107,7 +119,7 @@ function changeLanguage(id) {
   if (id === getLanguage()) return;
   setLanguage(id);
   topicId = visibleTopics()[0]?.id;
-  card = undefined;
+  setCard(undefined);
   turns.length = 0;
   conversation?.endSession();
   applyLanguage();
@@ -141,6 +153,7 @@ async function startConversation() {
         conversation = undefined;
         if (document.body.dataset.state !== 'error') setState('idle');
       },
+      clientTools: { flashcard_correct: completeCard },
       onModeChange: ({ mode }) => setState(mode),
       onMessage: ({ message, source }) => {
         turns.push({ role: source === 'user' ? 'user' : 'model', text: message });
@@ -153,6 +166,83 @@ async function startConversation() {
   } finally {
     starting = false;
   }
+}
+
+const centerOf = (element) => {
+  const { left, top, width, height } = element.getBoundingClientRect();
+  return { x: left + width / 2, y: top + height / 2 };
+};
+
+const floating = (className, text, { x, y }) => {
+  const element = Object.assign(document.createElement('span'), { className, textContent: text });
+  Object.assign(element.style, { left: `${x}px`, top: `${y}px` });
+  document.body.append(element);
+  return element;
+};
+
+function bumpWallet() {
+  $('wallet').animate(
+    [{ transform: 'scale(1)' }, { transform: 'scale(1.25) rotate(-6deg)' }, { transform: 'scale(1)' }],
+    { duration: 250 },
+  );
+}
+
+function awardCoins(origin) {
+  const start = centerOf(origin);
+  const end = centerOf($('wallet'));
+  const before = coins;
+  let landed = 0;
+  coins += COIN_REWARD;
+  saveCoins(coins);
+
+  floating('reward', `+${COIN_REWARD} 🪙`, start)
+    .animate(
+      [
+        { transform: 'translate(-50%, -50%) scale(.5)', opacity: 0 },
+        { transform: 'translate(-50%, -90px) scale(1.3)', opacity: 1, offset: 0.3 },
+        { transform: 'translate(-50%, -150px) scale(1)', opacity: 0 },
+      ],
+      { duration: 1500 },
+    )
+    .addEventListener('finish', (event) => event.target.effect.target.remove());
+
+  for (let index = 0; index < COIN_BURST; index++) {
+    const burstX = (Math.random() - 0.5) * 260;
+    const burstY = -40 - Math.random() * 120;
+    const coin = floating('coin', '🪙', start);
+    coin
+      .animate(
+        [
+          { transform: 'translate(-50%, -50%) scale(.3)', opacity: 0 },
+          { transform: `translate(calc(-50% + ${burstX}px), calc(-50% + ${burstY}px)) scale(1.2) rotate(180deg)`, opacity: 1, offset: 0.35 },
+          { transform: `translate(calc(-50% + ${end.x - start.x}px), calc(-50% + ${end.y - start.y}px)) scale(.6) rotate(720deg)`, opacity: 1 },
+        ],
+        { duration: 1200, delay: index * 60, easing: 'ease-in-out', fill: 'backwards' },
+      )
+      .addEventListener('finish', () => {
+        coin.remove();
+        landed += 1;
+        $('coins').textContent = before + Math.round((COIN_REWARD * landed) / COIN_BURST);
+        bumpWallet();
+      });
+  }
+}
+
+function completeCard() {
+  if (!card || rewarded) return;
+  rewarded = true;
+  const element = $('deck').children[currentTopic().cards.indexOf(card)];
+  if (!card.done) {
+    card.done = true;
+    saveTopics(topics);
+    const mark = checkMark();
+    element.append(mark);
+    mark.animate(
+      [{ transform: 'scale(0) rotate(-90deg)' }, { transform: 'scale(1.4) rotate(10deg)', offset: 0.6 }, { transform: 'scale(1)' }],
+      { duration: 500 },
+    );
+  }
+  awardCoins(element);
 }
 
 async function ask(text) {
@@ -355,6 +445,7 @@ async function animateVoice() {
 }
 
 applyLanguage();
+$('coins').textContent = coins;
 setState('idle');
 topicId = visibleTopics()[0]?.id;
 markLanguage();
