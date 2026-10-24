@@ -1,4 +1,8 @@
-# Homework Buddy
+# Six Seven Buddy
+
+<p align="center">
+  <img src="buddy.png" alt="Six Seven Buddy" width="320">
+</p>
 
 A voice homework tutor for children. Photograph a syllabus or homework page, turn it into flashcards, then practice them out loud with Buddy, an animated avatar who guides the child toward the answer, awards a green check and pays out coins when they get it right.
 
