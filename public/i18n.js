@@ -10,8 +10,8 @@ const DEFAULT_LANGUAGE = 'es';
 const TEXT = {
   en: {
     title: 'Homework Buddy',
-    greeting: 'Hi there! I am your homework buddy. What are we learning today?',
-    cardOpening: 'Hi there! Let us practice with your study flashcard. Are you ready?',
+    greeting: 'Yo, it is your homework buddy, ready to roll. What are we learning today? Let us take control!',
+    cardOpening: 'Yo, we got a flashcard, let us run it back. Ready to think and stay on track?',
     status: {
       idle: 'Tap the microphone and ask me anything!',
       connecting: 'Connecting…',
@@ -54,8 +54,8 @@ const TEXT = {
   },
   es: {
     title: 'Homework Buddy',
-    greeting: '¡Hola! Soy tu compañero de deberes. ¿Qué estamos aprendiendo hoy?',
-    cardOpening: '¡Hola! Vamos a practicar con tu tarjeta de estudio. ¿Estás listo?',
+    greeting: '¡Ey, soy tu compañero de deberes, listo para el compás! ¿Qué aprendemos hoy? ¡Vamos a dar un paso más!',
+    cardOpening: 'Tengo tu tarjeta aquí, lista para jugar. ¿Estás preparado? ¡Vamos a practicar!',
     status: {
       idle: 'Toca el micrófono y pregúntame lo que quieras.',
       connecting: 'Conectando…',
@@ -98,8 +98,8 @@ const TEXT = {
   },
   ru: {
     title: 'Homework Buddy',
-    greeting: 'Привет! Я твой помощник по домашним заданиям. Что мы сегодня изучаем?',
-    cardOpening: 'Привет! Давай потренируемся с твоей учебной карточкой. Ты готов?',
+    greeting: 'Привет, я твой помощник, давай начинать. Что учим сегодня? Мне не терпится узнать!',
+    cardOpening: 'Вот твоя карточка, пора тренироваться. Ты готов? Давай начнём стараться!',
     status: {
       idle: 'Нажми на микрофон и спроси меня о чём угодно!',
       connecting: 'Подключаюсь…',

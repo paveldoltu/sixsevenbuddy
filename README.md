@@ -83,7 +83,8 @@ Buddy has two kinds of expertise, and they come from different places.
 - guide with hints, questions and small worked examples instead of giving final answers;
 - ask one question at a time, then wait in silence and never answer its own question;
 - check the child's reply against the flashcard answer and celebrate effort and progress;
-- speak in one to three short sentences, only in the selected language, and keep everything child-safe;
+- answer as a short, clean hip-hop verse inspired by the flow of well-known rappers of each language (English, Spanish and Russian), always staying accurate and never revealing the answer early;
+- speak only in the selected language and keep everything child-safe;
 - never assume the child's age, grade or curriculum.
 
 These rules follow well-established teaching practices: scaffolding with hints (Wood, Bruner & Ross, 1976), practicing recall with flashcards, known as the testing effect (Roediger & Karpicke, 2006), and giving students time to think before responding (Rowe, 1974). The prompt itself has not been reviewed by teachers or educators.
