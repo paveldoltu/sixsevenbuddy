@@ -1,7 +1,11 @@
 import { Conversation } from 'https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.30.0/+esm';
+import { clearStudy, loadStudy, saveStudy } from './study.js';
 
 const $ = (id) => document.getElementById(id);
 const GREETING = 'Hi there! I am your homework buddy. What are we learning today?';
+const OPENING = '¡Hola! Soy tu compañero de deberes. ¿Qué estamos aprendiendo hoy?';
+const CARD_OPENING = '¡Hola! Vamos a practicar con tu tarjeta de estudio. ¿Estás listo?';
+const NO_CARD = 'No flashcard is selected.';
 const STATUS = {
   idle: 'Tap the microphone and ask me anything!',
   connecting: 'Connecting…',
@@ -17,6 +21,8 @@ const STUDIO = {
   camera: 'Camera unavailable. Please allow camera access.',
   reading: 'Reading your photos…',
   read: 'I could not read the photos. Please try again.',
+  creating: 'Creating your flashcards…',
+  flashcards: 'I could not create the flashcards. Please try again.',
 };
 const MAX_SIDE = 1600;
 const CHIPS = ['Help me with my homework', 'What is a fraction?', 'Why is the sky blue?'];
@@ -24,6 +30,7 @@ const turns = [];
 const shots = [];
 let conversation;
 let stream;
+let card = loadStudy()?.card;
 let starting = false;
 
 function setState(state, message = STATUS[state]) {
@@ -35,7 +42,14 @@ function render() {
   $('log').replaceChildren(...turns.map(({ role, text }) => Object.assign(document.createElement('li'), { className: role, textContent: text })));
   $('log').scrollTop = $('log').scrollHeight;
   $('subtitle').textContent = turns.findLast((turn) => turn.role === 'model')?.text ?? GREETING;
+  $('flashcard').hidden = !card;
+  $('flashcard').textContent = card ? `Flashcard: ${card.question}` : '';
 }
+
+const sessionVariables = () =>
+  card
+    ? { opening: CARD_OPENING, flashcard: `Question: ${card.question}\nAnswer: ${card.answer}` }
+    : { opening: OPENING, flashcard: NO_CARD };
 
 async function startConversation() {
   if (conversation || starting) return;
@@ -45,6 +59,7 @@ async function startConversation() {
     const { signed_url: signedUrl } = await (await fetch('/api/session', { method: 'POST' })).json();
     conversation = await Conversation.startSession({
       signedUrl,
+      dynamicVariables: sessionVariables(),
       onConnect: () => setState('listening'),
       onDisconnect: () => {
         conversation = undefined;
@@ -131,17 +146,17 @@ async function toggleCamera() {
   $('snap').hidden = false;
 }
 
+async function postJson(url, body) {
+  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!response.ok) throw new Error(response.status);
+  return response.json();
+}
+
 async function readPhotos() {
   $('read').disabled = true;
   setStudioStatus(STUDIO.reading);
   try {
-    const response = await fetch('/api/extract', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ images: shots.map((src) => src.split(',')[1]) }),
-    });
-    if (!response.ok) throw new Error(response.status);
-    const { text } = await response.json();
+    const { text } = await postJson('/api/extract', { images: shots.map((src) => src.split(',')[1]) });
     $('material').value = [$('material').value.trim(), text].filter(Boolean).join('\n\n');
     shots.length = 0;
     renderShots();
@@ -152,14 +167,19 @@ async function readPhotos() {
   }
 }
 
-async function study() {
+async function createFlashcards() {
   const material = $('material').value.trim();
   if (!material) return;
-  $('studio').close();
-  await startConversation();
-  conversation?.sendContextualUpdate(
-    `The child shared this study material from photos. Use it to guide the session with hints and questions, never final answers:\n${material}`,
-  );
+  $('study').disabled = true;
+  setStudioStatus(STUDIO.creating);
+  try {
+    const { cards } = await postJson('/api/flashcards', { material });
+    saveStudy({ cards });
+    location.href = 'cards.html';
+  } catch {
+    $('study').disabled = false;
+    setStudioStatus(STUDIO.flashcards);
+  }
 }
 
 for (const text of CHIPS) {
@@ -183,11 +203,20 @@ $('upload').onchange = async ({ target }) => {
   target.value = '';
 };
 $('read').onclick = readPhotos;
-$('study').onclick = study;
+$('study').onclick = createFlashcards;
 $('clear').onclick = () => {
   turns.length = 0;
   $('material').value = '';
+  clearStudy();
+  card = undefined;
   render();
   conversation?.endSession();
 };
+
+async function animateVoice() {
+  $('avatar').style.setProperty('--voice', conversation ? await conversation.getOutputVolume() : 0);
+  requestAnimationFrame(animateVoice);
+}
+
 render();
+animateVoice();

@@ -12,25 +12,27 @@
   .stage, .controls { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
   .stage { justify-content: center; }
   .controls { grid-column: 1 / -1; }
-  .avatar { width: min(240px, 60vw); animation: bob 3s ease-in-out infinite; }
+  .avatar { width: min(300px, 70vw); animation: bob 3s ease-in-out infinite; }
   body[data-state=speaking] .avatar { animation-duration: .9s; }
   .avatar svg { width: 100%; overflow: visible; }
-  svg * { transform-box: fill-box; transform-origin: center; }
-  .head { fill: #ffd166; stroke: #2b2d42; stroke-width: 4; }
-  .antenna { fill: #ff7a59; }
-  .eye { fill: #2b2d42; animation: blink 4s infinite; }
-  .cheek { fill: #ff9aa2; opacity: .7; }
-  .smile { fill: none; stroke: #2b2d42; stroke-width: 5; stroke-linecap: round; }
-  .open-mouth { display: none; fill: #7b2d3b; }
-  .ring { fill: none; stroke: #2ec4b6; stroke-width: 6; opacity: 0; }
+  .ring, .eye, .mouth { transform-box: fill-box; transform-origin: center; }
+  .ring { fill: none; stroke: #2ec4b6; stroke-width: 14; opacity: 0; }
   body[data-state=listening] .ring { opacity: .9; animation: pulse 1.2s ease-out infinite; }
   body[data-state=error] .ring { stroke: #e63946; opacity: .9; }
-  body[data-state=listening] .eyes { transform: scale(1.12); }
-  body[data-state=speaking] .smile { display: none; }
-  body[data-state=speaking] .open-mouth { display: block; animation: talk .2s ease-in-out infinite alternate; }
+  .eye { animation: blink 4s infinite; transition: scale .3s; }
+  body[data-state=listening] .eye { scale: 1.08; }
+  body[data-state=error] .eye { scale: .85; }
+  body[data-state=idle] .gaze { animation: glance 7s ease-in-out infinite; }
+  body[data-state=connecting] .gaze { animation: look .8s ease-in-out infinite alternate; }
+  body { --rest: .45; }
+  body[data-state=listening] { --rest: .55; }
+  body[data-state=speaking] { --rest: .25; }
+  body[data-state=error] { --rest: .2; }
+  .mouth { transform-origin: 218px 81px; transform: rotate(-14deg) scaleY(clamp(.1, calc(var(--rest) + var(--voice, 0) * 3), 1)) rotate(14deg); transition: transform .06s linear; }
   body[data-state=error] svg { animation: shake .4s ease-in-out 2; }
   .subtitle { min-height: 3.2em; max-width: 560px; margin: 0; padding: 14px 18px; background: #fff; border-radius: 18px; box-shadow: 0 6px 20px rgba(43, 45, 66, .12); font-size: 20px; }
   .status { margin: 0; opacity: .8; }
+  .flashcard { margin: 0; padding: 8px 14px; border-radius: 999px; background: #ffd166; font-weight: 600; }
   .side { display: flex; flex-direction: column; gap: 8px; }
   .side header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
   .actions, .row, .shots { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -57,7 +59,8 @@
   @keyframes bob { 50% { transform: translateY(-8px); } }
   @keyframes blink { 0%, 44%, 52%, 100% { transform: scaleY(1); } 48% { transform: scaleY(.1); } }
   @keyframes pulse { from { transform: scale(.94); opacity: .9; } to { transform: scale(1.08); opacity: 0; } }
-  @keyframes talk { from { transform: scaleY(.35); } to { transform: scaleY(1.1); } }
+  @keyframes glance { 0%, 35%, 100% { transform: translate(0, 0); } 45%, 70% { transform: translate(-16px, -6px); } 80%, 90% { transform: translate(14px, 4px); } }
+  @keyframes look { from { transform: translateX(-16px); } to { transform: translateX(16px); } }
   @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
   @media (max-width: 760px) {
     .app { grid-template-columns: 1fr; }
@@ -68,23 +71,19 @@
 <body data-state="idle">
 <main class="app">
   <section class="stage">
-    <div class="avatar">
-      <svg viewBox="0 0 200 220">
-        <circle class="ring" cx="100" cy="122" r="96"/>
-        <line x1="100" y1="40" x2="100" y2="14" stroke="#2b2d42" stroke-width="5" stroke-linecap="round"/>
-        <circle class="antenna" cx="100" cy="12" r="9"/>
-        <ellipse class="head" cx="100" cy="122" rx="78" ry="80"/>
-        <g class="eyes">
-          <ellipse class="eye" cx="72" cy="112" rx="10" ry="14"/>
-          <ellipse class="eye" cx="128" cy="112" rx="10" ry="14"/>
+    <div class="avatar" id="avatar">
+      <svg viewBox="0 0 1020 1090" role="img" aria-label="Buddy">
+        <circle class="ring" cx="510" cy="545" r="545"/>
+        <image href="buddy-base.png" width="1020" height="1090"/>
+        <g class="gaze">
+          <image class="eye" href="buddy-eye-left.png" x="226" y="542" width="255" height="230"/>
+          <image class="eye" href="buddy-eye-right.png" x="612" y="428" width="252" height="251"/>
         </g>
-        <ellipse class="cheek" cx="54" cy="142" rx="11" ry="7"/>
-        <ellipse class="cheek" cx="146" cy="142" rx="11" ry="7"/>
-        <path class="smile" d="M 80 150 Q 100 170 120 150"/>
-        <ellipse class="open-mouth" cx="100" cy="156" rx="16" ry="12"/>
+        <image class="mouth" href="buddy-mouth.png" x="333" y="678" width="437" height="269"/>
       </svg>
     </div>
     <p class="subtitle" id="subtitle"></p>
+    <p class="flashcard" id="flashcard" hidden></p>
     <p class="status" id="status">Tap the microphone and ask me anything!</p>
   </section>
 
@@ -116,7 +115,7 @@
   <p id="studioStatus"></p>
   <div class="row">
     <button id="read" disabled>Read photos</button>
-    <button id="study">Study this</button>
+    <button id="study">Create flashcards</button>
     <button id="studioClose">Close</button>
   </div>
 </dialog>

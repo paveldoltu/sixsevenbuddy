@@ -8,7 +8,19 @@ const GEMMA_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemma
 const MAX_BODY_BYTES = 25 * 1024 * 1024;
 const EXTRACT_PROMPT =
   'Transcribe all the text in these photos of school material (a syllabus or homework), in reading order and in its original language. Keep exercise numbering and formulas. Output only the transcribed text.';
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
+const FLASHCARDS_PROMPT =
+  'From this study material create exactly 3 different flashcards for a child. Each flashcard covers a different key idea and has a short question and a short answer, written in the same language as the material.\n\nMaterial:\n';
+const FLASHCARDS_SCHEMA = {
+  type: 'ARRAY',
+  minItems: 3,
+  maxItems: 3,
+  items: {
+    type: 'OBJECT',
+    properties: { question: { type: 'STRING' }, answer: { type: 'STRING' } },
+    required: ['question', 'answer'],
+  },
+};
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png' };
 const VOICES = { es: 'p4zZMQfmG6U1aRDEIlF6', en: 'cdnpdcqt2HW1XtKv2f3V', ru: 'WTn2eCRCpoFAC50VD351' };
 const SPEEDS = { es: 0.8 };
 
@@ -33,6 +45,15 @@ const PROMPT = [
   'If the child uses only an occasional word from another language, keep replying in the main language they are speaking.',
   'If the child speaks another language supported by the agent, reply in that language when possible.',
 
+  'PACING:',
+  'Speak calmly and slowly. Ask only one question at a time, then stop and wait in silence for the child to answer.',
+  'Never answer your own question and never fill the silence. Give the child time to think. If the child says they are thinking or stays silent for a while, say at most one short encouraging phrase such as "take your time" and wait again.',
+  'Let the child finish their whole thought before you respond, and never rush to correct.',
+
+  'STUDY FLASHCARD:',
+  'Flashcard for this session: {{flashcard}}',
+  "If it says that no flashcard is selected, help with whatever the child asks. Otherwise build the whole session around that flashcard: ask its question, guide with hints and small steps, never reveal the answer before the child has tried, check the child's reply against the flashcard answer, and celebrate when they get it. Stay in the language the child speaks and translate the flashcard on the fly if needed.",
+
   "Never assume the child's age, grade, curriculum or assignment; ask one short question if you need to know.",
   'Steer unrelated topics back to learning. Keep everything safe and appropriate for children.',
 ].join(' ');
@@ -40,7 +61,7 @@ const PROMPT = [
 const AGENT_CONFIG = {
   agent: {
     language: 'es',
-    first_message: '¡Hola! Soy tu compañero de deberes. ¿Qué estamos aprendiendo hoy?',
+    first_message: '{{opening}}',
     prompt: {
       prompt: PROMPT,
       built_in_tools: {
@@ -53,6 +74,7 @@ const AGENT_CONFIG = {
       },
     },
   },
+  turn: { turn_eagerness: 'patient', turn_timeout: 20 },
   tts: { model_id: 'eleven_flash_v2_5', voice_id: VOICES.es, stability: 0.75, similarity_boost: 0.75, speed: SPEEDS.es },
   language_presets: Object.fromEntries(
     Object.entries(VOICES).map(([language, voice_id]) => [language, { overrides: { tts: { voice_id, speed: SPEEDS[language] ?? 1 } } }]),
@@ -80,21 +102,29 @@ const configureAgent = () =>
     body: JSON.stringify({ conversation_config: AGENT_CONFIG }),
   });
 
-const extractText = async (images) => {
+const gemma = async (parts, generationConfig) => {
   const response = await fetch(GEMMA_URL, {
     method: 'POST',
     headers: { 'x-goog-api-key': GEMINI_API_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: EXTRACT_PROMPT }, ...images.map((data) => ({ inline_data: { mime_type: 'image/jpeg', data } }))] }],
-    }),
+    body: JSON.stringify({ contents: [{ parts }], generationConfig }),
   });
   if (!response.ok) throw new Error(`Gemma ${response.status} ${await response.text()}`);
   const { candidates } = await response.json();
   return candidates[0].content.parts
     .filter((part) => !part.thought)
-    .map((part) => part.text)
-    .join('')
-    .trim();
+    .at(-1)
+    .text.trim();
+};
+
+const extractText = (images) =>
+  gemma([{ text: EXTRACT_PROMPT }, ...images.map((data) => ({ inline_data: { mime_type: 'image/jpeg', data } }))]);
+
+const createFlashcards = async (material) => {
+  const cards = JSON.parse(
+    await gemma([{ text: FLASHCARDS_PROMPT + material }], { responseMimeType: 'application/json', responseSchema: FLASHCARDS_SCHEMA }),
+  );
+  if (cards.length !== 3) throw new Error(`Expected 3 flashcards, got ${cards.length}`);
+  return cards;
 };
 
 const readJson = async (req) => {
@@ -123,6 +153,10 @@ http
       if (req.method === 'POST' && pathname === '/api/extract') {
         const { images } = await readJson(req);
         return send(res, 200, JSON.stringify({ text: await extractText(images) }));
+      }
+      if (req.method === 'POST' && pathname === '/api/flashcards') {
+        const { material } = await readJson(req);
+        return send(res, 200, JSON.stringify({ cards: await createFlashcards(material) }));
       }
       const file = path.join('public', pathname === '/' ? 'index.html' : pathname);
       send(res, 200, await fs.promises.readFile(file), TYPES[path.extname(file)]);
