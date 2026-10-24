@@ -27,7 +27,6 @@ const currentTopic = () => visibleTopics().find((topic) => topic.id === topicId)
 function renderChat() {
   $('log').replaceChildren(...turns.map(({ role, text }) => Object.assign(document.createElement('li'), { className: role, textContent: text })));
   $('log').scrollTop = $('log').scrollHeight;
-  $('subtitle').textContent = turns.findLast((turn) => turn.role === 'model')?.text ?? t().greeting;
 }
 
 function markSelection() {
@@ -282,6 +281,7 @@ $('form').onsubmit = (event) => {
   ask($('text').value);
 };
 $('mic').onclick = toggleConversation;
+$('avatar').onclick = toggleConversation;
 $('newTopic').onclick = () => $('studio').showModal();
 $('freeChat').onclick = freeChat;
 $('studioClose').onclick = () => $('studio').close();
