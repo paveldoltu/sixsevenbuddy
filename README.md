@@ -1,4 +1,4 @@
-# Six Seven Buddy
+# SixSeven Buddy
 
 <p align="center">
   <img src="public/buddy.png" alt="Six Seven Buddy" width="320">
