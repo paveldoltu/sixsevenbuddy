@@ -1,0 +1,10 @@
+services:
+  app:
+    image: node:20-alpine
+    working_dir: /app
+    command: ["node", "--watch", "server.js"]
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    env_file: .env
+    volumes:
+      - ./:/app:ro
