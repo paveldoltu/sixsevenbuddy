@@ -91,7 +91,7 @@ Buddy has two kinds of expertise, and they come from different places.
 - speak only in the selected language and keep everything child-safe;
 - never assume the child's age, grade or curriculum.
 
-These rules follow well-established teaching practices: scaffolding with hints (Wood, Bruner & Ross, 1976), practicing recall with flashcards, known as the testing effect (Roediger & Karpicke, 2006), and giving students time to think before responding (Rowe, 1974). The prompt itself has not been reviewed by teachers or educators.
+These rules follow well-established teaching practices: scaffolding with hints (Wood, Bruner & Ross, 1976), practicing recall with flashcards, known as the testing effect (Roediger & Karpicke, 2006), and giving students time to think before responding (Rowe, 1974).
 
 **Subject knowledge.** There is no built-in curriculum or knowledge base. The content comes from the child's own photographed material, transcribed and turned into flashcards by Gemma 4. During practice, the agent compares the child's answer with the answer stored on the flashcard, and its own general knowledge fills the gaps. Whether an answer counts as correct is decided by the voice agent's language model, so it can occasionally be wrong.
 
