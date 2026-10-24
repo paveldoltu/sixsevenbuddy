@@ -3,16 +3,27 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Homework Buddy</title>
+<title data-i18n="title">Homework Buddy</title>
 <style>
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; min-height: 100vh; font: 16px/1.45 system-ui, sans-serif; color: #2b2d42; background: linear-gradient(160deg, #fff4e6, #e3f6ff); }
   button, input { font: inherit; border: 0; cursor: pointer; }
-  .app { display: grid; grid-template-columns: 1fr 320px; grid-template-rows: 1fr auto; gap: 16px; padding: 20px; }
-  .stage, .controls { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
-  .stage { justify-content: center; }
-  .controls { grid-column: 1 / -1; }
-  .avatar { width: min(300px, 70vw); animation: bob 3s ease-in-out infinite; }
+  .app { display: grid; grid-template-columns: 260px 1fr 320px; grid-template-areas: "lang lang lang" "topics stage side" "deck deck deck"; gap: 16px; padding: 16px 20px 20px; }
+  .languages { grid-area: lang; justify-self: center; display: flex; gap: 14px; }
+  .language { width: 40px; height: 40px; border-radius: 50%; background: #ff7a59; color: #fff; font-weight: 700; }
+  .language[aria-pressed=true] { outline: 3px solid #2b2d42; outline-offset: 2px; }
+  .topics { grid-area: topics; display: flex; flex-direction: column; gap: 8px; }
+  .side { grid-area: side; display: flex; flex-direction: column; gap: 8px; }
+  .topics header, .side header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+  .topic-list, .history { display: flex; flex-direction: column; gap: 8px; height: 400px; margin: 0; padding: 14px; overflow-y: auto; background: rgba(255, 255, 255, .7); border-radius: 18px; }
+  .history { list-style: none; }
+  .topic-items { display: flex; flex-direction: column; gap: 8px; }
+  .topic { padding: 10px 14px; border-radius: 14px; background: #ff7a59; color: #fff; text-align: left; overflow-wrap: anywhere; }
+  .topic.picked { background: #2b2d42; }
+  .empty { margin: 0; opacity: .7; }
+  .stage { grid-area: stage; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px; text-align: center; }
+  .avatar { width: min(260px, 70vw); animation: bob 3s ease-in-out infinite; }
   body[data-state=speaking] .avatar { animation-duration: .9s; }
   .avatar svg { width: 100%; overflow: visible; }
   .ring, .eye { transform-box: fill-box; transform-origin: center; }
@@ -31,18 +42,24 @@
   .subtitle { min-height: 3.2em; max-width: 560px; margin: 0; padding: 14px 18px; background: #fff; border-radius: 18px; box-shadow: 0 6px 20px rgba(43, 45, 66, .12); font-size: 20px; }
   .status { margin: 0; opacity: .8; }
   .flashcard { margin: 0; padding: 8px 14px; border-radius: 999px; background: #ffd166; font-weight: 600; }
-  .side { display: flex; flex-direction: column; gap: 8px; }
-  .side header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
   .actions, .row, .shots { display: flex; flex-wrap: wrap; gap: 8px; }
-  .history { flex: 1; display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 14px; list-style: none; overflow-y: auto; max-height: calc(100vh - 110px); background: rgba(255, 255, 255, .7); border-radius: 18px; }
   .history li { max-width: 88%; padding: 8px 12px; border-radius: 14px; overflow-wrap: anywhere; }
   .user { align-self: flex-end; background: #2ec4b6; color: #fff; }
   .model { align-self: flex-start; background: #ffd166; }
-  .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
-  .chip, .side header button, #form button, .studio button, .upload { padding: 8px 14px; border-radius: 999px; background: #2ec4b6; color: #fff; }
-  .chips .chip { background: #fff; color: #2b2d42; }
+  #newTopic, #freeChat { padding: 8px 14px; border-radius: 999px; background: #ff7a59; color: #fff; }
+  #freeChat.active { background: #2b2d42; }
+  #form button, .studio button, .upload { padding: 8px 14px; border-radius: 999px; background: #2ec4b6; color: #fff; }
   .upload { cursor: pointer; }
   button:disabled { opacity: .5; cursor: default; }
+  .deck-area { grid-area: deck; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .deck { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; }
+  .card { width: 150px; height: 200px; padding: 0; background: none; perspective: 900px; }
+  .flip { position: relative; display: block; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform .6s; }
+  .card:hover .flip { transform: translateY(-6px); }
+  .card.picked .flip { transform: rotateY(180deg); }
+  .face { position: absolute; inset: 0; display: grid; place-items: center; padding: 14px; border-radius: 18px; backface-visibility: hidden; box-shadow: 0 8px 20px rgba(43, 45, 66, .18); overflow-wrap: anywhere; }
+  .cover { background: #ff7a59; color: #fff; font-size: 56px; }
+  .front { background: #fff; color: #2b2d42; font-size: 17px; transform: rotateY(180deg); }
   .studio { width: min(560px, 94vw); max-height: 94vh; padding: 20px; border: 0; border-radius: 22px; color: #2b2d42; box-shadow: 0 20px 60px rgba(43, 45, 66, .3); }
   .studio[open] { display: flex; flex-direction: column; gap: 12px; }
   .studio::backdrop { background: rgba(43, 45, 66, .45); }
@@ -50,7 +67,7 @@
   .studio video { width: 100%; border-radius: 14px; background: #000; }
   .shots img { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; cursor: pointer; }
   #material { min-height: 160px; padding: 12px 16px; border: 1px solid #d0d4e0; border-radius: 14px; font: inherit; resize: vertical; }
-  #mic { width: 96px; height: 96px; border-radius: 50%; background: #ff7a59; color: #fff; font-size: 36px; box-shadow: 0 8px 20px rgba(255, 122, 89, .35); }
+  #mic { position: fixed; left: 20px; bottom: 20px; z-index: 10; width: 96px; height: 96px; border-radius: 50%; background: #ff7a59; color: #fff; font-size: 36px; box-shadow: 0 8px 20px rgba(255, 122, 89, .35); }
   body[data-state=listening] #mic, body[data-state=speaking] #mic { background: #e63946; }
   #form { display: flex; gap: 8px; width: min(520px, 100%); }
   #text { flex: 1; min-width: 0; padding: 12px 16px; border-radius: 999px; background: #fff; color: #2b2d42; }
@@ -60,14 +77,25 @@
   @keyframes glance { 0%, 35%, 100% { transform: translate(0, 0); } 45%, 70% { transform: translate(-16px, -6px); } 80%, 90% { transform: translate(14px, 4px); } }
   @keyframes look { from { transform: translateX(-16px); } to { transform: translateX(16px); } }
   @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
-  @media (max-width: 760px) {
-    .app { grid-template-columns: 1fr; }
-    .history { max-height: 200px; }
+  @media (max-width: 900px) {
+    .app { grid-template-columns: 1fr; grid-template-areas: "lang" "stage" "topics" "deck" "side"; padding-bottom: 130px; }
+    .topic-list, .history { height: 200px; }
   }
 </style>
 </head>
 <body data-state="idle">
+<button id="mic" data-i18n-label="micLabel">🎤</button>
 <main class="app">
+  <nav class="languages" id="languages" data-i18n-label="language"></nav>
+
+  <aside class="topics">
+    <header><strong data-i18n="topics"></strong><button id="newTopic" data-i18n="newTopic"></button></header>
+    <div class="topic-list">
+      <p class="empty" id="noTopics" data-i18n="noTopics"></p>
+      <div class="topic-items" id="topicList"></div>
+    </div>
+  </aside>
+
   <section class="stage">
     <div class="avatar" id="avatar">
       <svg viewBox="0 0 1020 1090" role="img" aria-label="Buddy">
@@ -110,39 +138,39 @@
     </div>
     <p class="subtitle" id="subtitle"></p>
     <p class="flashcard" id="flashcard" hidden></p>
-    <p class="status" id="status">Tap the microphone and ask me anything!</p>
+    <p class="status" id="status"></p>
+    <form id="form">
+      <input id="text" maxlength="1000" data-i18n-placeholder="textPlaceholder" autocomplete="off">
+      <button data-i18n="send"></button>
+    </form>
   </section>
 
   <aside class="side">
-    <header><strong>Conversation</strong><div class="actions"><button id="clear">New topic</button><button id="studioOpen">Study creator</button></div></header>
+    <header><strong data-i18n="conversation"></strong><button id="freeChat" data-i18n="freeChat"></button></header>
     <ol class="history" id="log"></ol>
   </aside>
 
-  <section class="controls">
-    <div class="chips" id="chips"></div>
-    <button id="mic" aria-label="Tap to start or stop talking">🎤</button>
-    <form id="form">
-      <input id="text" maxlength="1000" placeholder="Or type your question…" autocomplete="off">
-      <button>Send</button>
-    </form>
+  <section class="deck-area" id="deckArea" hidden>
+    <strong data-i18n="cardsTitle"></strong>
+    <div class="deck" id="deck"></div>
   </section>
 </main>
 
 <dialog class="studio" id="studio">
-  <h2>Study creator</h2>
+  <h2 data-i18n="newTopic"></h2>
   <video id="video" autoplay playsinline muted hidden></video>
   <div class="row">
-    <button id="camera">Camera</button>
-    <button id="snap" hidden>Take photo</button>
-    <label class="upload">Upload photos<input id="upload" type="file" accept="image/*" multiple hidden></label>
+    <button id="camera" data-i18n="camera"></button>
+    <button id="snap" data-i18n="snap" hidden></button>
+    <label class="upload"><span data-i18n="upload"></span><input id="upload" type="file" accept="image/*" multiple hidden></label>
   </div>
   <div class="shots" id="shots"></div>
-  <textarea id="material" placeholder="Photographed text from your syllabus or homework appears here. You can edit it."></textarea>
+  <textarea id="material" data-i18n-placeholder="materialPlaceholder"></textarea>
   <p id="studioStatus"></p>
   <div class="row">
-    <button id="read" disabled>Read photos</button>
-    <button id="study">Create flashcards</button>
-    <button id="studioClose">Close</button>
+    <button id="read" data-i18n="read" disabled></button>
+    <button id="study" data-i18n="createFlashcards"></button>
+    <button id="studioClose" data-i18n="close"></button>
   </div>
 </dialog>
 <script type="module" src="app.js"></script>

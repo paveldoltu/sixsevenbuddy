@@ -6,23 +6,35 @@ const { ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID, GEMINI_API_KEY, PORT = 3000 } =
 const ELEVEN_URL = 'https://api.elevenlabs.io/v1';
 const GEMMA_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemma-4-26b-a4b-it:generateContent';
 const MAX_BODY_BYTES = 25 * 1024 * 1024;
+const GEMMA_TIMEOUT_MS = 60000;
 const EXTRACT_PROMPT =
   'Transcribe all the text in these photos of school material (a syllabus or homework), in reading order and in its original language. Keep exercise numbering and formulas. Output only the transcribed text.';
-const FLASHCARDS_PROMPT =
-  'From this study material create exactly 3 different flashcards for a child. Each flashcard covers a different key idea and has a short question and a short answer, written in the same language as the material.\n\nMaterial:\n';
+const FLASHCARD_COUNT = 4;
+const flashcardsPrompt = (language, material) =>
+  `From this study material create a topic name of two to four words and exactly ${FLASHCARD_COUNT} different flashcards for a child. Each flashcard covers a different key idea and has a short question and a short answer. Write the topic name and every question and answer in ${language}, translating the material when it is in another language.\n\nMaterial:\n${material}`;
 const FLASHCARDS_SCHEMA = {
-  type: 'ARRAY',
-  minItems: 3,
-  maxItems: 3,
-  items: {
-    type: 'OBJECT',
-    properties: { question: { type: 'STRING' }, answer: { type: 'STRING' } },
-    required: ['question', 'answer'],
+  type: 'OBJECT',
+  properties: {
+    topic: { type: 'STRING' },
+    cards: {
+      type: 'ARRAY',
+      minItems: FLASHCARD_COUNT,
+      maxItems: FLASHCARD_COUNT,
+      items: {
+        type: 'OBJECT',
+        properties: { question: { type: 'STRING' }, answer: { type: 'STRING' } },
+        required: ['question', 'answer'],
+      },
+    },
   },
+  required: ['topic', 'cards'],
 };
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png' };
-const VOICES = { es: 'p4zZMQfmG6U1aRDEIlF6', en: 'cdnpdcqt2HW1XtKv2f3V', ru: 'WTn2eCRCpoFAC50VD351' };
-const SPEEDS = { es: 0.8 };
+const LANGUAGES = {
+  es: { name: 'Spanish', voice_id: 'p4zZMQfmG6U1aRDEIlF6', speed: 0.8 },
+  en: { name: 'English', voice_id: 'cdnpdcqt2HW1XtKv2f3V', speed: 1 },
+  ru: { name: 'Russian', voice_id: 'WTn2eCRCpoFAC50VD351', speed: 1 },
+};
 
 const PROMPT = [
   'You are a friendly, patient homework tutor for children.',
@@ -31,19 +43,11 @@ const PROMPT = [
   'Encourage every attempt and celebrate progress warmly.',
   'Your reply is spoken aloud: keep it to one to three short sentences in plain conversational language, with no lists, markdown or emojis.',
 
-  'AUTOMATIC LANGUAGE AND VOICE SWITCHING:',
-  'Detect the language the child is speaking in on every turn.',
-  'Always reply in the same language the child is currently speaking.',
-  'Switch languages automatically as soon as the child switches languages, even in the middle of a conversation.',
-  'Never wait for the child to ask you to switch, and never ask for confirmation.',
-  'Use the language_detection tool to identify language changes whenever needed.',
-  'When the language changes, immediately use the voice configured for that language through the language preset.',
-  'When the child speaks English, use the English language preset and English voice. When the child speaks Spanish, use the Spanish language preset and Spanish voice. When the child speaks Russian, use the Russian language preset and Russian voice.',
-  'Never keep using the previous language voice after switching languages.',
-  'Speak naturally with the pronunciation and accent appropriate to the selected language. In English, sound like a natural English speaker, not a Spanish speaker speaking English.',
-  'Continue detecting and responding to language changes throughout the entire conversation.',
-  'If the child uses only an occasional word from another language, keep replying in the main language they are speaking.',
-  'If the child speaks another language supported by the agent, reply in that language when possible.',
+  'LANGUAGE:',
+  'The language chosen for this session is {{language}}.',
+  'Speak only in {{language}} for the whole conversation and never switch to another language, even if the child says a word or two in another language.',
+  'Do not use the language_detection tool.',
+  'Speak naturally with the pronunciation and accent of a native {{language}} speaker.',
 
   'PACING:',
   'Speak calmly and slowly. Ask only one question at a time, then stop and wait in silence for the child to answer.',
@@ -52,7 +56,7 @@ const PROMPT = [
 
   'STUDY FLASHCARD:',
   'Flashcard for this session: {{flashcard}}',
-  "If it says that no flashcard is selected, help with whatever the child asks. Otherwise build the whole session around that flashcard: ask its question, guide with hints and small steps, never reveal the answer before the child has tried, check the child's reply against the flashcard answer, and celebrate when they get it. Stay in the language the child speaks and translate the flashcard on the fly if needed.",
+  "If it says that no flashcard is selected, help with whatever the child asks. Otherwise build the whole session around that flashcard: ask its question, guide with hints and small steps, never reveal the answer before the child has tried, check the child's reply against the flashcard answer, and celebrate when they get it. Always use {{language}} and translate the flashcard on the fly if needed.",
 
   "Never assume the child's age, grade, curriculum or assignment; ask one short question if you need to know.",
   'Steer unrelated topics back to learning. Keep everything safe and appropriate for children.',
@@ -75,10 +79,14 @@ const AGENT_CONFIG = {
     },
   },
   turn: { turn_eagerness: 'patient', turn_timeout: 20 },
-  tts: { model_id: 'eleven_flash_v2_5', voice_id: VOICES.es, stability: 0.75, similarity_boost: 0.75, speed: SPEEDS.es },
+  tts: { model_id: 'eleven_flash_v2_5', voice_id: LANGUAGES.es.voice_id, stability: 0.75, similarity_boost: 0.75, speed: LANGUAGES.es.speed },
   language_presets: Object.fromEntries(
-    Object.entries(VOICES).map(([language, voice_id]) => [language, { overrides: { tts: { voice_id, speed: SPEEDS[language] ?? 1 } } }]),
+    Object.entries(LANGUAGES).map(([language, { voice_id, speed }]) => [language, { overrides: { tts: { voice_id, speed } } }]),
   ),
+};
+
+const PLATFORM_SETTINGS = {
+  overrides: { conversation_config_override: { agent: { language: true }, tts: { voice_id: true, speed: true } } },
 };
 
 const elevenRequest = async (url, init = {}) => {
@@ -90,23 +98,31 @@ const elevenRequest = async (url, init = {}) => {
   return response.json();
 };
 
-const session = () => {
+const requireLanguage = (id) => {
+  if (!Object.hasOwn(LANGUAGES, id)) throw Object.assign(new Error('Unsupported language'), { status: 400 });
+  return id;
+};
+
+const session = async (language) => {
   const url = new URL(`${ELEVEN_URL}/convai/conversation/get-signed-url`);
   url.searchParams.set('agent_id', ELEVENLABS_AGENT_ID);
-  return elevenRequest(url);
+  const { signed_url } = await elevenRequest(url);
+  const { name, voice_id, speed } = LANGUAGES[language];
+  return { signed_url, language_name: name, voice_id, speed };
 };
 
 const configureAgent = () =>
   elevenRequest(`${ELEVEN_URL}/convai/agents/${ELEVENLABS_AGENT_ID}`, {
     method: 'PATCH',
-    body: JSON.stringify({ conversation_config: AGENT_CONFIG }),
+    body: JSON.stringify({ conversation_config: AGENT_CONFIG, platform_settings: PLATFORM_SETTINGS }),
   });
 
 const gemma = async (parts, generationConfig) => {
   const response = await fetch(GEMMA_URL, {
     method: 'POST',
     headers: { 'x-goog-api-key': GEMINI_API_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts }], generationConfig }),
+    body: JSON.stringify({ contents: [{ parts }], generationConfig: { thinkingConfig: { thinkingLevel: 'MINIMAL' }, ...generationConfig } }),
+    signal: AbortSignal.timeout(GEMMA_TIMEOUT_MS),
   });
   if (!response.ok) throw new Error(`Gemma ${response.status} ${await response.text()}`);
   const { candidates } = await response.json();
@@ -119,12 +135,15 @@ const gemma = async (parts, generationConfig) => {
 const extractText = (images) =>
   gemma([{ text: EXTRACT_PROMPT }, ...images.map((data) => ({ inline_data: { mime_type: 'image/jpeg', data } }))]);
 
-const createFlashcards = async (material) => {
-  const cards = JSON.parse(
-    await gemma([{ text: FLASHCARDS_PROMPT + material }], { responseMimeType: 'application/json', responseSchema: FLASHCARDS_SCHEMA }),
+const createFlashcards = async (material, language) => {
+  const { topic, cards } = JSON.parse(
+    await gemma([{ text: flashcardsPrompt(LANGUAGES[language].name, material) }], {
+      responseMimeType: 'application/json',
+      responseSchema: FLASHCARDS_SCHEMA,
+    }),
   );
-  if (cards.length !== 3) throw new Error(`Expected 3 flashcards, got ${cards.length}`);
-  return cards;
+  if (cards.length !== FLASHCARD_COUNT) throw new Error(`Expected ${FLASHCARD_COUNT} flashcards, got ${cards.length}`);
+  return { topic, cards };
 };
 
 const readJson = async (req) => {
@@ -148,15 +167,16 @@ http
     try {
       const { pathname } = new URL(req.url, 'http://localhost');
       if (req.method === 'POST' && pathname === '/api/session') {
-        return send(res, 200, JSON.stringify(await session()));
+        const { language } = await readJson(req);
+        return send(res, 200, JSON.stringify(await session(requireLanguage(language))));
       }
       if (req.method === 'POST' && pathname === '/api/extract') {
         const { images } = await readJson(req);
         return send(res, 200, JSON.stringify({ text: await extractText(images) }));
       }
       if (req.method === 'POST' && pathname === '/api/flashcards') {
-        const { material } = await readJson(req);
-        return send(res, 200, JSON.stringify({ cards: await createFlashcards(material) }));
+        const { material, language } = await readJson(req);
+        return send(res, 200, JSON.stringify(await createFlashcards(material, requireLanguage(language))));
       }
       const file = path.join('public', pathname === '/' ? 'index.html' : pathname);
       send(res, 200, await fs.promises.readFile(file), TYPES[path.extname(file)]);

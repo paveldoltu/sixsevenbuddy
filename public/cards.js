@@ -1,6 +1,8 @@
 import { loadStudy, saveStudy } from './study.js';
+import { applyLanguage } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
+applyLanguage();
 const { cards = [] } = loadStudy() ?? {};
 let selected;
 

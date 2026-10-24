@@ -1,79 +1,156 @@
 import { Conversation } from 'https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.30.0/+esm';
-import { clearStudy, loadStudy, saveStudy } from './study.js';
+import { loadTopics, saveTopics } from './study.js';
+import { LANGUAGES, applyLanguage, getLanguage, setLanguage, t } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
-const GREETING = 'Hi there! I am your homework buddy. What are we learning today?';
-const OPENING = '¡Hola! Soy tu compañero de deberes. ¿Qué estamos aprendiendo hoy?';
-const CARD_OPENING = '¡Hola! Vamos a practicar con tu tarjeta de estudio. ¿Estás listo?';
 const NO_CARD = 'No flashcard is selected.';
-const STATUS = {
-  idle: 'Tap the microphone and ask me anything!',
-  connecting: 'Connecting…',
-  listening: 'Listening… go ahead, I am ready.',
-  speaking: 'Here is my answer!',
-};
-const ERRORS = {
-  mic: 'Microphone unavailable. Please allow microphone access.',
-  connect: 'I could not connect right now. Please try again in a few seconds.',
-  session: 'Something went wrong. Please try again.',
-};
-const STUDIO = {
-  camera: 'Camera unavailable. Please allow camera access.',
-  reading: 'Reading your photos…',
-  read: 'I could not read the photos. Please try again.',
-  creating: 'Creating your flashcards…',
-  flashcards: 'I could not create the flashcards. Please try again.',
-};
 const MAX_SIDE = 1600;
-const CHIPS = ['Help me with my homework', 'What is a fraction?', 'Why is the sky blue?'];
+const REQUEST_TIMEOUT_MS = 90000;
 const turns = [];
 const shots = [];
+let topics = loadTopics();
+let topicId;
 let conversation;
 let stream;
-let card = loadStudy()?.card;
+let card;
 let starting = false;
+let sessionId = 0;
 
-function setState(state, message = STATUS[state]) {
+function setState(state, message = t().status[state]) {
   document.body.dataset.state = state;
   $('status').textContent = message;
 }
 
-function render() {
+const visibleTopics = () => topics.filter((topic) => topic.language === getLanguage());
+const currentTopic = () => visibleTopics().find((topic) => topic.id === topicId);
+
+function renderChat() {
   $('log').replaceChildren(...turns.map(({ role, text }) => Object.assign(document.createElement('li'), { className: role, textContent: text })));
   $('log').scrollTop = $('log').scrollHeight;
-  $('subtitle').textContent = turns.findLast((turn) => turn.role === 'model')?.text ?? GREETING;
-  $('flashcard').hidden = !card;
-  $('flashcard').textContent = card ? `Flashcard: ${card.question}` : '';
+  $('subtitle').textContent = turns.findLast((turn) => turn.role === 'model')?.text ?? t().greeting;
 }
 
-const sessionVariables = () =>
+function markSelection() {
+  const cards = currentTopic()?.cards ?? [];
+  [...$('deck').children].forEach((element, index) => element.classList.toggle('picked', cards[index] === card));
+  $('flashcard').hidden = !card;
+  $('flashcard').textContent = card ? `${t().flashcard}: ${card.question}` : '';
+  $('freeChat').classList.toggle('active', !card);
+}
+
+const face = (className, text) => Object.assign(document.createElement('span'), { className: `face ${className}`, textContent: text });
+
+function cardButton(item) {
+  const flip = Object.assign(document.createElement('span'), { className: 'flip' });
+  flip.append(face('cover', '?'), face('front', item.question));
+  const element = Object.assign(document.createElement('button'), { className: 'card', onclick: () => selectCard(item) });
+  element.append(flip);
+  return element;
+}
+
+function renderStudy() {
+  const items = visibleTopics();
+  $('topicList').replaceChildren(
+    ...items.map((topic) =>
+      Object.assign(document.createElement('button'), {
+        className: topic.id === topicId ? 'topic picked' : 'topic',
+        textContent: topic.name,
+        onclick: () => selectTopic(topic.id),
+      }),
+    ),
+  );
+  $('noTopics').hidden = items.length > 0;
+  $('deckArea').hidden = !currentTopic();
+  $('deck').replaceChildren(...(currentTopic()?.cards ?? []).map(cardButton));
+  markSelection();
+}
+
+function render() {
+  renderChat();
+  renderStudy();
+}
+
+async function restartConversation() {
+  if (!conversation) return;
+  await conversation.endSession();
+  conversation = undefined;
+  await startConversation();
+}
+
+function showTopic(id) {
+  topicId = id;
+  card = undefined;
+  renderStudy();
+  restartConversation();
+}
+
+function selectTopic(id) {
+  if (id !== topicId) showTopic(id);
+}
+
+function selectCard(item) {
+  card = item;
+  markSelection();
+  restartConversation();
+}
+
+function freeChat() {
+  card = undefined;
+  markSelection();
+  restartConversation();
+}
+
+function markLanguage() {
+  for (const element of $('languages').children) element.setAttribute('aria-pressed', String(element.textContent === getLanguage()));
+}
+
+function changeLanguage(id) {
+  if (id === getLanguage()) return;
+  setLanguage(id);
+  topicId = visibleTopics()[0]?.id;
+  card = undefined;
+  turns.length = 0;
+  conversation?.endSession();
+  applyLanguage();
+  setStudioStatus('');
+  setState('idle');
+  renderShots();
+  markLanguage();
+  render();
+}
+
+const sessionVariables = (language) =>
   card
-    ? { opening: CARD_OPENING, flashcard: `Question: ${card.question}\nAnswer: ${card.answer}` }
-    : { opening: OPENING, flashcard: NO_CARD };
+    ? { language, opening: t().cardOpening, flashcard: `Question: ${card.question}\nAnswer: ${card.answer}` }
+    : { language, opening: t().greeting, flashcard: NO_CARD };
 
 async function startConversation() {
   if (conversation || starting) return;
   starting = true;
+  const id = ++sessionId;
   setState('connecting');
   try {
-    const { signed_url: signedUrl } = await (await fetch('/api/session', { method: 'POST' })).json();
+    const language = getLanguage();
+    const { signed_url: signedUrl, language_name: languageName, voice_id: voiceId, speed } = await postJson('/api/session', { language });
     conversation = await Conversation.startSession({
       signedUrl,
-      dynamicVariables: sessionVariables(),
+      dynamicVariables: sessionVariables(languageName),
+      overrides: { agent: { language }, tts: { voiceId, speed } },
       onConnect: () => setState('listening'),
       onDisconnect: () => {
+        if (id !== sessionId) return;
         conversation = undefined;
         if (document.body.dataset.state !== 'error') setState('idle');
       },
       onModeChange: ({ mode }) => setState(mode),
       onMessage: ({ message, source }) => {
         turns.push({ role: source === 'user' ? 'user' : 'model', text: message });
-        render();
+        renderChat();
       },
-      onError: () => setState('error', ERRORS.session),
+      onError: () => setState('error', t().errors.session),
     });
   } catch (error) {
-    setState('error', error.name === 'NotAllowedError' ? ERRORS.mic : ERRORS.connect);
+    setState('error', error.name === 'NotAllowedError' ? t().errors.mic : t().errors.connect);
   } finally {
     starting = false;
   }
@@ -86,7 +163,7 @@ async function ask(text) {
   if (!conversation) return;
   turns.push({ role: 'user', text: message });
   $('text').value = '';
-  render();
+  renderChat();
   conversation.sendUserMessage(message);
 }
 
@@ -109,7 +186,7 @@ function renderShots() {
     ...shots.map((src, index) =>
       Object.assign(new Image(), {
         src,
-        title: 'Remove',
+        title: t().remove,
         onclick: () => {
           shots.splice(index, 1);
           renderShots();
@@ -138,7 +215,7 @@ async function toggleCamera() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
   } catch {
-    return setStudioStatus(STUDIO.camera);
+    return setStudioStatus(t().studio.camera);
   }
   setStudioStatus('');
   $('video').srcObject = stream;
@@ -147,14 +224,19 @@ async function toggleCamera() {
 }
 
 async function postJson(url, body) {
-  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
   if (!response.ok) throw new Error(response.status);
   return response.json();
 }
 
 async function readPhotos() {
   $('read').disabled = true;
-  setStudioStatus(STUDIO.reading);
+  setStudioStatus(t().studio.reading);
   try {
     const { text } = await postJson('/api/extract', { images: shots.map((src) => src.split(',')[1]) });
     $('material').value = [$('material').value.trim(), text].filter(Boolean).join('\n\n');
@@ -163,7 +245,7 @@ async function readPhotos() {
     setStudioStatus('');
   } catch {
     $('read').disabled = false;
-    setStudioStatus(STUDIO.read);
+    setStudioStatus(t().studio.read);
   }
 }
 
@@ -171,26 +253,37 @@ async function createFlashcards() {
   const material = $('material').value.trim();
   if (!material) return;
   $('study').disabled = true;
-  setStudioStatus(STUDIO.creating);
+  setStudioStatus(t().studio.creating);
   try {
-    const { cards } = await postJson('/api/flashcards', { material });
-    saveStudy({ cards });
-    location.href = 'cards.html';
+    const { topic, cards } = await postJson('/api/flashcards', { material, language: getLanguage() });
+    const created = { id: Date.now(), language: getLanguage(), name: topic, cards };
+    topics = [created, ...topics];
+    saveTopics(topics);
+    $('material').value = '';
+    shots.length = 0;
+    renderShots();
+    setStudioStatus('');
+    $('studio').close();
+    showTopic(created.id);
   } catch {
+    setStudioStatus(t().studio.flashcards);
+  } finally {
     $('study').disabled = false;
-    setStudioStatus(STUDIO.flashcards);
   }
 }
 
-for (const text of CHIPS) {
-  $('chips').append(Object.assign(document.createElement('button'), { className: 'chip', textContent: text, onclick: () => ask(text) }));
-}
+$('languages').replaceChildren(
+  ...LANGUAGES.map(({ id, name }) =>
+    Object.assign(document.createElement('button'), { className: 'language', textContent: id, title: name, onclick: () => changeLanguage(id) }),
+  ),
+);
 $('form').onsubmit = (event) => {
   event.preventDefault();
   ask($('text').value);
 };
 $('mic').onclick = toggleConversation;
-$('studioOpen').onclick = () => $('studio').showModal();
+$('newTopic').onclick = () => $('studio').showModal();
+$('freeChat').onclick = freeChat;
 $('studioClose').onclick = () => $('studio').close();
 $('studio').onclose = stopCamera;
 $('camera').onclick = toggleCamera;
@@ -204,14 +297,6 @@ $('upload').onchange = async ({ target }) => {
 };
 $('read').onclick = readPhotos;
 $('study').onclick = createFlashcards;
-$('clear').onclick = () => {
-  turns.length = 0;
-  $('material').value = '';
-  clearStudy();
-  card = undefined;
-  render();
-  conversation?.endSession();
-};
 
 const mouth = { open: 0, smile: 1 };
 const mouthPaths = document.querySelectorAll('.mouth-d');
@@ -269,5 +354,9 @@ async function animateVoice() {
   requestAnimationFrame(animateVoice);
 }
 
+applyLanguage();
+setState('idle');
+topicId = visibleTopics()[0]?.id;
+markLanguage();
 render();
 animateVoice();
