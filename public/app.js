@@ -213,8 +213,59 @@ $('clear').onclick = () => {
   conversation?.endSession();
 };
 
+const mouth = { open: 0, smile: 1 };
+const mouthPaths = document.querySelectorAll('.mouth-d');
+
+const lerp = (from, to, amount) => from + (to - from) * amount;
+
+function drawMouth({ open, smile }) {
+  const left = 14 + open * 20;
+  const right = 423 - open * 20;
+  const width = right - left;
+  const corner = 34 - 22 * smile + open * 14;
+  const upper = corner + 64 * smile;
+  const lower = upper + open * 250;
+  const jaw = 0.3 - 0.22 * open;
+  const teeth = Math.min(1, open * 3) * 46;
+  const upperEdge = (y, dy) => `C${left + width * 0.3} ${y + dy} ${right - width * 0.3} ${y + dy} ${right} ${corner + dy}`;
+  const shape = `M${left} ${corner}${upperEdge(upper, 0)}C${right - width * jaw} ${lower} ${left + width * jaw} ${lower} ${left} ${corner}Z`;
+  const lowerMiddle = 0.25 * corner + 0.75 * lower;
+  const flick = -16 * smile;
+
+  for (const path of mouthPaths) path.setAttribute('d', shape);
+  $('teethPath').setAttribute('d', `M${left} ${corner}${upperEdge(upper, 0)}L${right} ${corner + teeth}C${right - width * 0.3} ${upper + teeth} ${left + width * 0.3} ${upper + teeth} ${left} ${corner + teeth}Z`);
+  $('goldTooth').setAttribute('x', left + width * 0.56);
+  Object.entries({ cx: 218, cy: lowerMiddle + 4, rx: width * 0.3, ry: 80 }).forEach(([name, value]) => $('tongue').setAttribute(name, value));
+  $('cornerLeft').setAttribute('d', `M${left} ${corner}Q${left - 10} ${corner + flick / 8} ${left - 14} ${corner + flick}`);
+  $('cornerRight').setAttribute('d', `M${right} ${corner}Q${right + 10} ${corner + flick / 8} ${right + 14} ${corner + flick}`);
+}
+
+const voice = { floor: undefined };
+
+async function readVoiceLevel() {
+  const active = conversation;
+  if (!active || document.body.dataset.state !== 'speaking') return undefined;
+  try {
+    return await active.getOutputVolume();
+  } catch {
+    return undefined;
+  }
+}
+
 async function animateVoice() {
-  $('avatar').style.setProperty('--voice', conversation ? await conversation.getOutputVolume() : 0);
+  const level = await readVoiceLevel();
+  let target = 0;
+  if (level === undefined) {
+    voice.floor = undefined;
+  } else {
+    voice.floor = voice.floor === undefined || level < voice.floor ? level : lerp(voice.floor, level, 0.01);
+    target = Math.min(0.9, Math.max(0, level - voice.floor - 0.02) * 3.2);
+  }
+  mouth.open = lerp(mouth.open, target, target > mouth.open ? 0.45 : 0.2);
+  if (mouth.open < 0.02) mouth.open = 0;
+  const smile = document.body.dataset.state === 'error' ? -0.8 : 1 - mouth.open * 0.4;
+  mouth.smile = lerp(mouth.smile, smile, 0.2);
+  drawMouth(mouth);
   requestAnimationFrame(animateVoice);
 }
 

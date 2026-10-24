@@ -15,7 +15,7 @@
   .avatar { width: min(300px, 70vw); animation: bob 3s ease-in-out infinite; }
   body[data-state=speaking] .avatar { animation-duration: .9s; }
   .avatar svg { width: 100%; overflow: visible; }
-  .ring, .eye, .mouth { transform-box: fill-box; transform-origin: center; }
+  .ring, .eye { transform-box: fill-box; transform-origin: center; }
   .ring { fill: none; stroke: #2ec4b6; stroke-width: 14; opacity: 0; }
   body[data-state=listening] .ring { opacity: .9; animation: pulse 1.2s ease-out infinite; }
   body[data-state=error] .ring { stroke: #e63946; opacity: .9; }
@@ -24,11 +24,9 @@
   body[data-state=error] .eye { scale: .85; }
   body[data-state=idle] .gaze { animation: glance 7s ease-in-out infinite; }
   body[data-state=connecting] .gaze { animation: look .8s ease-in-out infinite alternate; }
-  body { --rest: .45; }
-  body[data-state=listening] { --rest: .55; }
-  body[data-state=speaking] { --rest: .25; }
-  body[data-state=error] { --rest: .2; }
-  .mouth { transform-origin: 218px 81px; transform: rotate(-14deg) scaleY(clamp(.1, calc(var(--rest) + var(--voice, 0) * 3), 1)) rotate(14deg); transition: transform .06s linear; }
+  .mouth-outline, .mouth-corner { fill: none; stroke: #0b0a1f; stroke-linecap: round; stroke-linejoin: round; }
+  .mouth-outline { stroke-width: 12; }
+  .mouth-corner { stroke-width: 10; }
   body[data-state=error] svg { animation: shake .4s ease-in-out 2; }
   .subtitle { min-height: 3.2em; max-width: 560px; margin: 0; padding: 14px 18px; background: #fff; border-radius: 18px; box-shadow: 0 6px 20px rgba(43, 45, 66, .12); font-size: 20px; }
   .status { margin: 0; opacity: .8; }
@@ -79,7 +77,35 @@
           <image class="eye" href="buddy-eye-left.png" x="226" y="542" width="255" height="230"/>
           <image class="eye" href="buddy-eye-right.png" x="612" y="428" width="252" height="251"/>
         </g>
-        <image class="mouth" href="buddy-mouth.png" x="333" y="678" width="437" height="269"/>
+        <defs>
+          <clipPath id="mouthClip"><path class="mouth-d"/></clipPath>
+          <clipPath id="teethClip"><path id="teethPath"/></clipPath>
+          <linearGradient id="teethGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#fff"/>
+            <stop offset="1" stop-color="#d9e2ef"/>
+          </linearGradient>
+          <linearGradient id="goldGradient" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#ffe27a"/>
+            <stop offset="1" stop-color="#e0a416"/>
+          </linearGradient>
+          <linearGradient id="tongueGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#ff6b85"/>
+            <stop offset="1" stop-color="#e03352"/>
+          </linearGradient>
+        </defs>
+        <g transform="translate(333 752) rotate(-8 218 60)">
+          <path class="mouth-d" fill="#0b0a1f"/>
+          <g clip-path="url(#mouthClip)">
+            <ellipse id="tongue" fill="url(#tongueGradient)"/>
+            <g clip-path="url(#teethClip)">
+              <rect x="-100" y="-100" width="700" height="500" fill="url(#teethGradient)"/>
+              <rect id="goldTooth" y="-100" width="40" height="500" fill="url(#goldGradient)"/>
+            </g>
+          </g>
+          <path class="mouth-d mouth-outline"/>
+          <path id="cornerLeft" class="mouth-corner"/>
+          <path id="cornerRight" class="mouth-corner"/>
+        </g>
       </svg>
     </div>
     <p class="subtitle" id="subtitle"></p>
